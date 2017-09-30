@@ -1,5 +1,7 @@
 module Stomp.Frames where
 
+import Data.ByteString as BS
+import Data.ByteString.Char8 as Char8
 import Data.ByteString.UTF8 as UTF
 
 data Header         =   Header HeaderName HeaderValue
@@ -38,9 +40,17 @@ instance Show Body where
     show EmptyBody = ""
     show (Body s)  = show s
 
+bodyToBytes :: Body -> ByteString
+bodyToBytes EmptyBody = UTF.fromString ""
+bodyToBytes (Body bs) = bs
+
 instance Show Frame where
     show (Frame c h b) = show c ++ "\n" ++ show h ++ show b ++ "\NUL"
 
+frameToBytes :: Frame -> ByteString
+frameToBytes (Frame c h b) = 
+    BS.append (Char8.snoc (UTF.fromString $ show c) '\n')
+        (Char8.snoc (append (UTF.fromString $ show h) (bodyToBytes b)) '\NUL')
 
 -- Header utility functions
 
