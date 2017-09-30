@@ -52,6 +52,21 @@ frameToBytes (Frame c h b) =
     BS.append (Char8.snoc (UTF.fromString $ show c) '\n')
         (Char8.snoc (append (UTF.fromString $ show h) (bodyToBytes b)) '\NUL')
 
+stringToCommand :: String -> Command
+stringToCommand "SEND"        = SEND
+stringToCommand "SUBSCRIBE"   = SUBSCRIBE
+stringToCommand "UNSUBSCRIBE" = UNSUBSCRIBE
+stringToCommand "BEGIN"       = BEGIN
+stringToCommand "COMMIT"      = COMMIT
+stringToCommand "ABORT"       = ABORT
+stringToCommand "ACK"         = ACK
+stringToCommand "NACK"        = NACK
+stringToCommand "DISCONNECT"  = DISCONNECT
+stringToCommand "CONNECT"     = CONNECT
+stringToCommand "MESSAGE"     = MESSAGE
+stringToCommand "RECEIPT"     = RECEIPT
+stringToCommand "ERROR"       = ERROR
+
 -- Header utility functions
 
 makeHeaders :: [Header] -> Headers
@@ -88,6 +103,10 @@ addHeaders headers (Some h hs)  = (Some h (addHeaders headers hs))
 addFrameHeaders :: Headers -> Frame -> Frame
 addFrameHeaders h1 (Frame c h2 b) = Frame c (addHeaders h2 h1) b
 
+getContentLength :: Headers -> Maybe Int
+getContentLength EndOfHeaders                         = Nothing
+getContentLength (Some (Header "content-length" n) _) = Just (read n)
+getContentLength (Some header headers)                = getContentLength headers
 
 -- Frame utility functions
 
