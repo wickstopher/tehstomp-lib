@@ -10,3 +10,5 @@ clean:
 	
 uninstall: clean
 	ghc-pkg unregister tehstomp-lib
+
+reinstall: uninstall install

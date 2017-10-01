@@ -125,14 +125,16 @@ textFrame message command = let encoding = (UTF.fromString message) in
           (makeHeaders [plainTextContentHeader, contentLengthHeader encoding])
           (Body encoding)
 
+getCommand :: Frame -> Command
+getCommand (Frame c h b) = c
 
 -- Convenience functions to create various concrete headers
 
 stompHeaders ::  String -> Headers
 stompHeaders host = makeHeaders [Header "accept-version" "1.2", Header "host" host]
 
-versionHeader :: Header
-versionHeader = Header "version" "1.2"
+versionHeader :: String -> Header
+versionHeader version = Header "version" version
 
 plainTextContentHeader :: Header
 plainTextContentHeader = Header "content-type" "text/plain"
@@ -207,8 +209,8 @@ disconnect receipt = Frame DISCONNECT (makeHeaders [receiptHeader receipt]) Empt
 
 -- Server frames
 
-connected :: Frame
-connected = Frame CONNECTED (makeHeaders [versionHeader]) EmptyBody
+connected :: String -> Frame
+connected version = Frame CONNECTED (makeHeaders [versionHeader version]) EmptyBody
 
 errorFrame :: String -> Frame
 errorFrame message = textFrame message ERROR

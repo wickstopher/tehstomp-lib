@@ -12,44 +12,44 @@ import System.IO
 
 parseFrame :: Handle -> IO Frame
 parseFrame handle = do
-    command <- getCommand handle
-    headers <- getHeaders handle EndOfHeaders
-    body    <- getBody handle (getContentLength headers)
+    command <- parseCommand handle
+    headers <- parseHeaders handle EndOfHeaders
+    body    <- parseBody handle (getContentLength headers)
     return $ Frame command headers body
 
-getCommand :: Handle -> IO Command
-getCommand handle = do
+parseCommand :: Handle -> IO Command
+parseCommand handle = do
     commandLine <- BS.hGetLine handle
     return $ stringToCommand (toString commandLine)
 
-getHeaders :: Handle -> Headers -> IO Headers
-getHeaders handle headers = do
+parseHeaders :: Handle -> Headers -> IO Headers
+parseHeaders handle headers = do
     line <- stringFromHandle handle
     if line == "" then
         return headers
     else
-        getHeaders handle (addHeaderEnd (headerFromLine line) headers)
+        parseHeaders handle (addHeaderEnd (headerFromLine line) headers)
 
-getBody :: Handle -> Maybe Int -> IO Body
-getBody handle (Just n) = do
+parseBody :: Handle -> Maybe Int -> IO Body
+parseBody handle (Just n) = do
     bytes <- hGet handle n
     nullByte <- hGet handle 1
     return (Body bytes)
-getBody handle Nothing  = do 
+parseBody handle Nothing  = do 
     bytes <- hGet handle 1
     if bytes == (fromString "\NUL") then
         return EmptyBody
     else do
-        body <- getBodyNoContentLengthHeader handle [BS.head bytes]
+        body <- parseBodyNoContentLengthHeader handle [BS.head bytes]
         return $ Body body
 
-getBodyNoContentLengthHeader :: Handle -> [Word8] -> IO ByteString
-getBodyNoContentLengthHeader handle bytes = do
+parseBodyNoContentLengthHeader :: Handle -> [Word8] -> IO ByteString
+parseBodyNoContentLengthHeader handle bytes = do
     byte <- hGet handle 1
     if byte == (fromString "\NUL") then
         return (BS.pack $ Prelude.reverse bytes)
     else
-        getBodyNoContentLengthHeader handle ((BS.head byte) : bytes)
+        parseBodyNoContentLengthHeader handle ((BS.head byte) : bytes)
 
 headerFromLine :: String -> Header
 headerFromLine line = let tokens = tokenize ":" line in
