@@ -64,6 +64,7 @@ stringToCommand "ACK"         = ACK
 stringToCommand "NACK"        = NACK
 stringToCommand "DISCONNECT"  = DISCONNECT
 stringToCommand "CONNECT"     = CONNECT
+stringToCommand "CONNECTED"   = CONNECTED
 stringToCommand "MESSAGE"     = MESSAGE
 stringToCommand "RECEIPT"     = RECEIPT
 stringToCommand "ERROR"       = ERROR
