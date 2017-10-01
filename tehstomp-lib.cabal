@@ -16,8 +16,8 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Stomp.Frames, Stomp.Frames.IO
-  other-modules:       Stomp.Util
+  exposed-modules:     Stomp.Frames, Stomp.Frames.IO, Stomp.Util
+  -- other-modules:
   -- other-extensions:    
   build-depends:       base >=4.8, bytestring, network, split, utf8-string >=1.0
   hs-source-dirs:      src
