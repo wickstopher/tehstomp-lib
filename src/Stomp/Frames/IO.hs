@@ -7,6 +7,7 @@ import Data.ByteString.UTF8
 import Data.List.Split
 import Data.Word
 import Stomp.Frames
+import Stomp.Util
 import System.IO
 
 parseFrame :: Handle -> IO Frame
@@ -49,9 +50,6 @@ getBodyNoContentLengthHeader handle bytes = do
         return (BS.pack $ Prelude.reverse bytes)
     else
         getBodyNoContentLengthHeader handle ((BS.head byte) : bytes)
-
-tokenize :: String -> String -> [String]
-tokenize delimiter = Prelude.filter (not . Prelude.null) . splitOn delimiter
 
 headerFromLine :: String -> Header
 headerFromLine line = let tokens = tokenize ":" line in

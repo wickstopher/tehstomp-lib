@@ -3,6 +3,7 @@ module Stomp.Frames where
 import Data.ByteString as BS
 import Data.ByteString.Char8 as Char8
 import Data.ByteString.UTF8 as UTF
+import Stomp.Util
 
 data Header         =   Header HeaderName HeaderValue
 data Headers        =   Some Header Headers | EndOfHeaders
@@ -106,7 +107,15 @@ addFrameHeaders h1 (Frame c h2 b) = Frame c (addHeaders h2 h1) b
 getContentLength :: Headers -> Maybe Int
 getContentLength EndOfHeaders                         = Nothing
 getContentLength (Some (Header "content-length" n) _) = Just (read n)
-getContentLength (Some header headers)                = getContentLength headers
+getContentLength (Some _ headers)                     = getContentLength headers
+
+getSupportedVersions :: Frame -> Maybe [String]
+getSupportedVersions (Frame _ h _) = getVersionsFromHeaders h
+
+getVersionsFromHeaders :: Headers -> Maybe [String]
+getVersionsFromHeaders EndOfHeaders                                = Nothing
+getVersionsFromHeaders (Some (Header "accept-version" versions) _) = Just (tokenize "," versions)
+getVersionsFromHeaders (Some _ headers)                            = getVersionsFromHeaders headers
 
 -- Frame utility functions
 
