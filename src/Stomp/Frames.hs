@@ -118,13 +118,17 @@ getVersionsFromHeaders EndOfHeaders                                = Nothing
 getVersionsFromHeaders (Some (Header "accept-version" versions) _) = Just (tokenize "," versions)
 getVersionsFromHeaders (Some _ headers)                            = getVersionsFromHeaders headers
 
-getReceiptId :: Frame -> Maybe String
-getReceiptId (Frame _ h _) = getReceiptIdFromHeaders h
+getReceipt :: Frame -> Maybe String
+getReceipt (Frame _ h _) = getValueForHeader "receipt" h
 
-getReceiptIdFromHeaders :: Headers -> Maybe String
-getReceiptIdFromHeaders EndOfHeaders                           = Nothing
-getReceiptIdFromHeaders (Some (Header "receipt" receiptId) _)  = Just receiptId
-getReceiptIdFromHeaders (Some _ headers)                       = getReceiptIdFromHeaders headers
+getReceiptId :: Frame -> Maybe String
+getReceiptId (Frame _ h _) = getValueForHeader "receipt-id" h
+
+getValueForHeader :: String -> Headers -> Maybe String
+getValueForHeader _ EndOfHeaders = Nothing
+getValueForHeader s (Some (Header s' v) headers) 
+    | s == s'   = Just v
+    | otherwise = getValueForHeader s headers
 
 -- Frame utility functions
 
@@ -136,6 +140,9 @@ textFrame message command = let encoding = (UTF.fromString message) in
 
 getCommand :: Frame -> Command
 getCommand (Frame c h b) = c
+
+addReceiptHeader :: String -> Frame -> Frame
+addReceiptHeader receiptId = addFrameHeaderEnd (receiptHeader receiptId)
 
 -- Convenience functions to create various concrete headers
 
