@@ -118,6 +118,14 @@ getVersionsFromHeaders EndOfHeaders                                = Nothing
 getVersionsFromHeaders (Some (Header "accept-version" versions) _) = Just (tokenize "," versions)
 getVersionsFromHeaders (Some _ headers)                            = getVersionsFromHeaders headers
 
+getReceiptId :: Frame -> Maybe String
+getReceiptId (Frame _ h _) = getReceiptIdFromHeaders h
+
+getReceiptIdFromHeaders :: Headers -> Maybe String
+getReceiptIdFromHeaders EndOfHeaders                           = Nothing
+getReceiptIdFromHeaders (Some (Header "receipt" receiptId) _)  = Just receiptId
+getReceiptIdFromHeaders (Some _ headers)                       = getReceiptIdFromHeaders headers
+
 -- Frame utility functions
 
 textFrame :: String -> Command -> Frame
