@@ -1,14 +1,46 @@
 module Stomp.Frames.IO (
-    parseFrame
+    FrameHandler,
+    initFrameHandler,
+    put,
+    get,
+    close
 ) where
 
 import Data.ByteString as BS
 import Data.ByteString.UTF8
+import Control.Concurrent
+import Control.Concurrent.TxEvent
 import Data.List.Split
 import Data.Word
 import Stomp.Frames
 import Stomp.Util
 import System.IO
+
+data FrameHandler = FrameHandler Handle (SChan Frame) ThreadId
+
+initFrameHandler :: Handle -> IO FrameHandler
+initFrameHandler handle = do
+    writeChannel <- sync newSChan
+    tid <- forkIO $ frameWriterLoop handle writeChannel
+    return $ FrameHandler handle writeChannel tid
+
+put :: FrameHandler -> Frame -> IO ()
+put (FrameHandler _ writeChannel _) frame = do
+    sync $ sendEvt writeChannel frame
+
+get :: FrameHandler -> IO Frame
+get (FrameHandler handle _ _) = parseFrame handle
+
+close :: FrameHandler -> IO ()
+close (FrameHandler handle _ tid) = do
+    killThread tid
+    hClose handle
+
+frameWriterLoop :: Handle -> SChan Frame -> IO ()
+frameWriterLoop handle writeChannel = do
+    frame <- sync $ recvEvt writeChannel
+    hPut handle $ frameToBytes frame
+    frameWriterLoop handle writeChannel
 
 parseFrame :: Handle -> IO Frame
 parseFrame handle = do

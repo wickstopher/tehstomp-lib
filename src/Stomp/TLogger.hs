@@ -1,9 +1,9 @@
 module Stomp.TLogger where
 
-import System.IO
 import Control.Concurrent
 import Control.Concurrent.TxEvent
 import Data.Time
+import System.IO
 
 data Logger = Logger Handle (SChan String) ThreadId (IO String -> IO String)
 
@@ -28,7 +28,7 @@ prompt (Logger handle logChannel _ f) message = do
     message' <- f (return message)
     sync $ sendEvt logChannel $ message'
 
-logLoop :: Handle -> (SChan String) -> IO ()
+logLoop :: Handle -> SChan String -> IO ()
 logLoop handle logChannel = do
     message <- sync $ recvEvt logChannel
     hPutStr handle message
