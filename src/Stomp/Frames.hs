@@ -53,6 +53,10 @@ frameToBytes (Frame c h b) =
     BS.append (Char8.snoc (UTF.fromString $ show c) '\n')
         (Char8.snoc (append (UTF.fromString $ show h) (bodyToBytes b)) '\NUL')
 
+getBody :: Frame -> Body
+getBody (Frame c h b ) = b
+
+
 stringToCommand :: String -> Command
 stringToCommand "SEND"        = SEND
 stringToCommand "SUBSCRIBE"   = SUBSCRIBE
@@ -123,6 +127,9 @@ getReceipt (Frame _ h _) = getValueForHeader "receipt" h
 
 getReceiptId :: Frame -> Maybe String
 getReceiptId (Frame _ h _) = getValueForHeader "receipt-id" h
+
+getDestination :: Frame -> Maybe String
+getDestination (Frame _ h _) = getValueForHeader "destination" h
 
 getValueForHeader :: String -> Headers -> Maybe String
 getValueForHeader _ EndOfHeaders = Nothing
