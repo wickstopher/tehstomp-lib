@@ -16,24 +16,29 @@ import Stomp.Frames
 import Stomp.Util
 import System.IO
 
-data FrameHandler = FrameHandler Handle (SChan Frame) ThreadId
+data FrameHandler = FrameHandler Handle (SChan Frame) (SChan Frame) ThreadId ThreadId
 
 initFrameHandler :: Handle -> IO FrameHandler
 initFrameHandler handle = do
     writeChannel <- sync newSChan
-    tid <- forkIO $ frameWriterLoop handle writeChannel
-    return $ FrameHandler handle writeChannel tid
+    readChannel  <- sync newSChan
+    wTid <- forkIO $ frameWriterLoop handle writeChannel
+    rTid <- forkIO $ frameReaderLoop handle readChannel
+    return $ FrameHandler handle writeChannel readChannel wTid rTid
 
 put :: FrameHandler -> Frame -> IO ()
-put (FrameHandler _ writeChannel _) frame = do
+put (FrameHandler _ writeChannel _ _ _) frame = do
     sync $ sendEvt writeChannel frame
 
 get :: FrameHandler -> IO Frame
-get (FrameHandler handle _ _) = parseFrame handle
+get (FrameHandler _ _ readChannel _ _) = do
+    frame <- sync $ recvEvt readChannel
+    return frame
 
 close :: FrameHandler -> IO ()
-close (FrameHandler handle _ tid) = do
-    killThread tid
+close (FrameHandler handle _ _ wTid rTid) = do
+    killThread wTid
+    killThread rTid
     hClose handle
 
 frameWriterLoop :: Handle -> SChan Frame -> IO ()
@@ -41,6 +46,13 @@ frameWriterLoop handle writeChannel = do
     frame <- sync $ recvEvt writeChannel
     hPut handle $ frameToBytes frame
     frameWriterLoop handle writeChannel
+
+frameReaderLoop :: Handle -> SChan Frame -> IO ()
+frameReaderLoop handle readChannel = do
+    frame <- parseFrame handle
+    sync $ sendEvt readChannel frame
+    frameReaderLoop handle readChannel
+
 
 parseFrame :: Handle -> IO Frame
 parseFrame handle = do
