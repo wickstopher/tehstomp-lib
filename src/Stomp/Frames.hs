@@ -54,7 +54,10 @@ frameToBytes (Frame c h b) =
         (Char8.snoc (append (UTF.fromString $ show h) (bodyToBytes b)) '\NUL')
 
 getBody :: Frame -> Body
-getBody (Frame c h b ) = b
+getBody (Frame c h b) = b
+
+getHeaders :: Frame -> Headers
+getHeaders (Frame c h b) = h
 
 
 stringToCommand :: String -> Command
