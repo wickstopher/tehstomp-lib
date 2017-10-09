@@ -137,6 +137,12 @@ getDestination (Frame _ h _) = getValueForHeader "destination" h
 getAck :: Frame -> Maybe String
 getAck (Frame _ h _) = getValueForHeader "ack" h
 
+getId :: Frame -> Maybe String
+getId (Frame _ h _) = getValueForHeader "id" h
+
+getSubscription :: Frame -> Maybe String
+getSubscription (Frame _ h _) = getValueForHeader "subscription" h
+
 getValueForHeader :: String -> Headers -> Maybe String
 getValueForHeader _ EndOfHeaders = Nothing
 getValueForHeader s (Some (Header s' v) headers) 
