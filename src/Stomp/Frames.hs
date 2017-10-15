@@ -4,6 +4,7 @@ import Data.ByteString as BS
 import Data.ByteString.Char8 as Char8
 import Data.ByteString.UTF8 as UTF
 import Stomp.Util
+import Text.Read
 
 data Header         =   Header HeaderName HeaderValue
 data Headers        =   Some Header Headers | EndOfHeaders
@@ -97,7 +98,7 @@ addFrameHeaders h1 (Frame c h2 b) = Frame c (addHeaders h2 h1) b
 
 getContentLength :: Headers -> Maybe Int
 getContentLength EndOfHeaders                         = Nothing
-getContentLength (Some (Header "content-length" n) _) = Just (read n)
+getContentLength (Some (Header "content-length" n) _) = readMaybe n
 getContentLength (Some _ headers)                     = getContentLength headers
 
 getSupportedVersions :: Frame -> Maybe [String]

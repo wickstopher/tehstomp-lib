@@ -24,7 +24,7 @@ data FrameHandler = FrameHandler Handle (SChan Frame) (SChan FrameEvt) ThreadId 
 -- |A FrameEvt is a type of event that can be received from a FrameHandler. It is either a NewFrame,
 -- representing that a Frame was successfully read from the Channel
 data FrameEvt = NewFrame Frame |
-                ParseError |
+                ParseError String |
                 GotEof
 
 
@@ -103,8 +103,9 @@ parseHeaders handle headers = do
         line <- stringFromHandle handle
         if line == "" then
             return $ Left headers
-        else
-            parseHeaders handle (addHeaderEnd (headerFromLine line) headers)
+        else case headerFromLine line of
+            Left h -> parseHeaders handle (addHeaderEnd h headers)
+            Right evt -> return $ Right evt
 
 addBody :: Handle -> Command -> Headers -> IO FrameEvt
 addBody handle command headers = do
@@ -122,7 +123,7 @@ parseBody handle (Just n) = do
         bytes <- hGet handle n
         nullByte <- hGet handle 1
         if nullByte /= (fromString "\NUL") then
-            return $ Right ParseError
+            return $ Right $ ParseError $ "Read " ++ (show n) ++ " bytes, and the subsequent byte was not NUL"
         else
             return $ Left (Body bytes)
 parseBody handle Nothing  = do 
@@ -151,9 +152,12 @@ parseBodyNoContentLengthHeader handle bytes = do
         else
             parseBodyNoContentLengthHeader handle ((BS.head byte) : bytes)
 
-headerFromLine :: String -> Header
+headerFromLine :: String -> Either Header FrameEvt
 headerFromLine line = let tokens = tokenize ":" line in
-    Header (Prelude.head tokens) (Prelude.last tokens)
+    if (Prelude.length tokens) == 2 then
+        Left $ Header (Prelude.head tokens) (Prelude.last tokens)
+    else
+        Right $ ParseError $ "Malformed header: " ++ line
 
 stringFromHandle :: Handle -> IO String
 stringFromHandle handle = do
@@ -175,4 +179,4 @@ stringToCommand "CONNECTED"   = Left CONNECTED
 stringToCommand "MESSAGE"     = Left MESSAGE
 stringToCommand "RECEIPT"     = Left RECEIPT
 stringToCommand "ERROR"       = Left ERROR
-stringToCommand _             = Right ParseError
+stringToCommand s             = Right $ ParseError $ "Malformed command: " ++ s
