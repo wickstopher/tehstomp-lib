@@ -1,4 +1,33 @@
-module Stomp.Frames where
+module Stomp.Frames (
+    Header(..),
+    Headers(..),
+    Body(..),
+    Command(..),
+    Frame(..),
+    addFrameHeaderFront,
+    addHeaderEnd,
+    addHeaderFront,
+    addReceiptHeader,
+    connect,
+    connected,
+    disconnect,
+    errorFrame,
+    frameToBytes,
+    getCommand,
+    getContentLength,
+    getDestination,
+    getHeaders,
+    getId,
+    getReceipt,
+    getReceiptId,
+    getSupportedVersions,
+    getValueForHeader,
+    messageIdHeader,
+    receipt,
+    sendText,
+    subscribe,
+    subscriptionHeader
+) where
 
 import Data.ByteString as BS
 import Data.ByteString.Char8 as Char8
