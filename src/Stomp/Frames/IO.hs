@@ -40,9 +40,9 @@ get (FrameHandler _ _ readChannel _ _) = do
 
 close :: FrameHandler -> IO ()
 close (FrameHandler handle _ _ wTid rTid) = do
+    hClose handle
     killThread wTid
     killThread rTid
-    hClose handle
 
 frameWriterLoop :: Handle -> SChan Frame -> IO ()
 frameWriterLoop handle writeChannel = do
