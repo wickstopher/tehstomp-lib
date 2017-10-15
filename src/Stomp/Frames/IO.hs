@@ -1,5 +1,6 @@
 module Stomp.Frames.IO (
     FrameHandler,
+    FrameEvt(..),
     initFrameHandler,
     put,
     get,
@@ -12,11 +13,13 @@ import Control.Concurrent
 import Control.Concurrent.TxEvent
 import Data.List.Split
 import Data.Word
-import Stomp.Frames
+import Stomp.Frames hiding (addHeaders)
 import Stomp.Util
 import System.IO
 
-data FrameHandler = FrameHandler Handle (SChan Frame) (SChan Frame) ThreadId ThreadId
+data FrameHandler = FrameHandler Handle (SChan Frame) (SChan FrameEvt) ThreadId ThreadId
+
+data FrameEvt = NewFrame Frame | GotEof
 
 initFrameHandler :: Handle -> IO FrameHandler
 initFrameHandler handle = do
@@ -30,7 +33,7 @@ put :: FrameHandler -> Frame -> IO ()
 put (FrameHandler _ writeChannel _ _ _) frame = do
     sync $ sendEvt writeChannel frame
 
-get :: FrameHandler -> IO Frame
+get :: FrameHandler -> IO FrameEvt
 get (FrameHandler _ _ readChannel _ _) = do
     frame <- sync $ recvEvt readChannel
     return frame
@@ -47,53 +50,93 @@ frameWriterLoop handle writeChannel = do
     hPut handle $ frameToBytes frame
     frameWriterLoop handle writeChannel
 
-frameReaderLoop :: Handle -> SChan Frame -> IO ()
+frameReaderLoop :: Handle -> SChan FrameEvt -> IO ()
 frameReaderLoop handle readChannel = do
     frame <- parseFrame handle
-    sync $ sendEvt readChannel frame
-    frameReaderLoop handle readChannel
+    case frame of 
+        Just f  -> do
+            sync $ sendEvt readChannel (NewFrame f)
+            frameReaderLoop handle readChannel
+        Nothing -> do
+            sync $ sendEvt readChannel GotEof
+            return ()
 
-
-parseFrame :: Handle -> IO Frame
+parseFrame :: Handle -> IO (Maybe Frame)
 parseFrame handle = do
     command <- parseCommand handle
+    case command of
+        Just c  -> addHeaders handle c
+        Nothing -> return Nothing
+
+addHeaders :: Handle -> Command -> IO (Maybe Frame)
+addHeaders handle command = do
     headers <- parseHeaders handle EndOfHeaders
-    body    <- parseBody handle (getContentLength headers)
-    return $ Frame command headers body
+    case headers of
+        Just h  -> addBody handle command h
+        Nothing -> return Nothing
 
-parseCommand :: Handle -> IO Command
+addBody :: Handle -> Command -> Headers -> IO (Maybe Frame)
+addBody handle command headers = do
+    body <- parseBody handle (getContentLength headers)
+    case body of
+        Just b  -> return $ Just (Frame command headers b)
+        Nothing -> return Nothing
+
+parseCommand :: Handle -> IO (Maybe Command)
 parseCommand handle = do
-    commandLine <- BS.hGetLine handle
-    return $ stringToCommand (toString commandLine)
-
-parseHeaders :: Handle -> Headers -> IO Headers
-parseHeaders handle headers = do
-    line <- stringFromHandle handle
-    if line == "" then
-        return headers
-    else
-        parseHeaders handle (addHeaderEnd (headerFromLine line) headers)
-
-parseBody :: Handle -> Maybe Int -> IO Body
-parseBody handle (Just n) = do
-    bytes <- hGet handle n
-    nullByte <- hGet handle 1
-    return (Body bytes)
-parseBody handle Nothing  = do 
-    bytes <- hGet handle 1
-    if bytes == (fromString "\NUL") then
-        return EmptyBody
+    eof <- hIsEOF handle
+    if eof then
+        return Nothing
     else do
-        body <- parseBodyNoContentLengthHeader handle [BS.head bytes]
-        return $ Body body
+        commandLine <- BS.hGetLine handle
+        return $ stringToCommand (toString commandLine)
 
-parseBodyNoContentLengthHeader :: Handle -> [Word8] -> IO ByteString
+parseHeaders :: Handle -> Headers -> IO (Maybe Headers)
+parseHeaders handle headers = do
+    eof <- hIsEOF handle
+    if eof then
+        return Nothing
+    else do
+        line <- stringFromHandle handle
+        if line == "" then
+            return $ Just headers
+        else
+            parseHeaders handle (addHeaderEnd (headerFromLine line) headers)
+
+parseBody :: Handle -> Maybe Int -> IO (Maybe Body)
+parseBody handle (Just n) = do
+    eof <- hIsEOF handle
+    if eof then
+        return Nothing
+    else do 
+        bytes <- hGet handle n
+        nullByte <- hGet handle 1
+        return $ Just (Body bytes)
+parseBody handle Nothing  = do 
+    eof <- hIsEOF handle
+    if eof then
+        return Nothing
+    else do
+        bytes <- hGet handle 1
+        if bytes == (fromString "\NUL") then
+            return $ Just EmptyBody
+        else do
+            body <- parseBodyNoContentLengthHeader handle [BS.head bytes]
+            case body of
+                Just body -> return $ Just (Body body)
+                Nothing   -> return Nothing
+
+parseBodyNoContentLengthHeader :: Handle -> [Word8] -> IO (Maybe ByteString)
 parseBodyNoContentLengthHeader handle bytes = do
-    byte <- hGet handle 1
-    if byte == (fromString "\NUL") then
-        return (BS.pack $ Prelude.reverse bytes)
-    else
-        parseBodyNoContentLengthHeader handle ((BS.head byte) : bytes)
+    eof <- hIsEOF handle
+    if eof then
+        return Nothing
+    else do
+        byte <- hGet handle 1
+        if byte == (fromString "\NUL") then
+            return $ Just (BS.pack $ Prelude.reverse bytes)
+        else
+            parseBodyNoContentLengthHeader handle ((BS.head byte) : bytes)
 
 headerFromLine :: String -> Header
 headerFromLine line = let tokens = tokenize ":" line in
