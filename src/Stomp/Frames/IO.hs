@@ -17,10 +17,19 @@ import Stomp.Frames hiding (addHeaders)
 import Stomp.Util
 import System.IO
 
+-- |A FrameHandler encapsulates the work of sending and receiving frames on a Handle (e.g.) a
+-- Handle to a TCP socket connection to a STOMP client or broker).
 data FrameHandler = FrameHandler Handle (SChan Frame) (SChan FrameEvt) ThreadId ThreadId
 
-data FrameEvt = NewFrame Frame | GotEof
+-- |A FrameEvt is a type of event that can be received from a FrameHandler. It is either a NewFrame,
+-- representing that a Frame was successfully read from the Channel
+data FrameEvt = NewFrame Frame |
+                ParseError |
+                GotEof
 
+
+-- |Given a resource Handle to which STOMP frames will be read from and written to, initializes a FrameHandler 
+-- and returns it to the caller.
 initFrameHandler :: Handle -> IO FrameHandler
 initFrameHandler handle = do
     writeChannel <- sync newSChan
@@ -29,15 +38,19 @@ initFrameHandler handle = do
     rTid <- forkIO $ frameReaderLoop handle readChannel
     return $ FrameHandler handle writeChannel readChannel wTid rTid
 
+-- |Puts the given Frame into the given FrameHandler. This function will block until the Frame has been processed.
 put :: FrameHandler -> Frame -> IO ()
 put (FrameHandler _ writeChannel _ _ _) frame = do
     sync $ sendEvt writeChannel frame
 
+-- |Get a FrameEvt from the given FrameHandler. This function will block until a Frame is available, or until some error
+-- has occurred.
 get :: FrameHandler -> IO FrameEvt
 get (FrameHandler _ _ readChannel _ _) = do
     frame <- sync $ recvEvt readChannel
     return frame
 
+-- |Closes tha handle and kills all threads associated with the FrameHandler.
 close :: FrameHandler -> IO ()
 close (FrameHandler handle _ _ wTid rTid) = do
     hClose handle
@@ -52,89 +65,89 @@ frameWriterLoop handle writeChannel = do
 
 frameReaderLoop :: Handle -> SChan FrameEvt -> IO ()
 frameReaderLoop handle readChannel = do
-    frame <- parseFrame handle
-    case frame of 
-        Just f  -> do
-            sync $ sendEvt readChannel (NewFrame f)
-            frameReaderLoop handle readChannel
-        Nothing -> do
-            sync $ sendEvt readChannel GotEof
-            return ()
+    evt <- parseFrame handle
+    sync $ sendEvt readChannel evt
+    case evt of 
+        NewFrame _ -> frameReaderLoop handle readChannel
+        otherwise  -> return ()
 
-parseFrame :: Handle -> IO (Maybe Frame)
+parseFrame :: Handle -> IO FrameEvt
 parseFrame handle = do
     command <- parseCommand handle
     case command of
-        Just c  -> addHeaders handle c
-        Nothing -> return Nothing
+        Left c    -> addHeaders handle c
+        Right evt -> return evt
 
-addHeaders :: Handle -> Command -> IO (Maybe Frame)
-addHeaders handle command = do
-    headers <- parseHeaders handle EndOfHeaders
-    case headers of
-        Just h  -> addBody handle command h
-        Nothing -> return Nothing
-
-addBody :: Handle -> Command -> Headers -> IO (Maybe Frame)
-addBody handle command headers = do
-    body <- parseBody handle (getContentLength headers)
-    case body of
-        Just b  -> return $ Just (Frame command headers b)
-        Nothing -> return Nothing
-
-parseCommand :: Handle -> IO (Maybe Command)
+parseCommand :: Handle -> IO (Either Command FrameEvt)
 parseCommand handle = do
     eof <- hIsEOF handle
     if eof then
-        return Nothing
+        return $ Right GotEof
     else do
         commandLine <- BS.hGetLine handle
         return $ stringToCommand (toString commandLine)
 
-parseHeaders :: Handle -> Headers -> IO (Maybe Headers)
+addHeaders :: Handle -> Command -> IO FrameEvt
+addHeaders handle command = do
+    headers <- parseHeaders handle EndOfHeaders
+    case headers of
+        Left h    -> addBody handle command h
+        Right evt -> return evt
+
+parseHeaders :: Handle -> Headers -> IO (Either Headers FrameEvt)
 parseHeaders handle headers = do
     eof <- hIsEOF handle
     if eof then
-        return Nothing
+        return $ Right GotEof
     else do
         line <- stringFromHandle handle
         if line == "" then
-            return $ Just headers
+            return $ Left headers
         else
             parseHeaders handle (addHeaderEnd (headerFromLine line) headers)
 
-parseBody :: Handle -> Maybe Int -> IO (Maybe Body)
+addBody :: Handle -> Command -> Headers -> IO FrameEvt
+addBody handle command headers = do
+    body <- parseBody handle (getContentLength headers)
+    case body of
+        Left b    -> return (NewFrame $ Frame command headers b)
+        Right evt -> return evt
+
+parseBody :: Handle -> Maybe Int -> IO (Either Body FrameEvt)
 parseBody handle (Just n) = do
     eof <- hIsEOF handle
     if eof then
-        return Nothing
+        return $ Right GotEof
     else do 
         bytes <- hGet handle n
         nullByte <- hGet handle 1
-        return $ Just (Body bytes)
+        if nullByte /= (fromString "\NUL") then
+            return $ Right ParseError
+        else
+            return $ Left (Body bytes)
 parseBody handle Nothing  = do 
     eof <- hIsEOF handle
     if eof then
-        return Nothing
+        return $ Right GotEof
     else do
         bytes <- hGet handle 1
         if bytes == (fromString "\NUL") then
-            return $ Just EmptyBody
+            return $ Left EmptyBody
         else do
-            body <- parseBodyNoContentLengthHeader handle [BS.head bytes]
-            case body of
-                Just body -> return $ Just (Body body)
-                Nothing   -> return Nothing
+            bodyBytes <- parseBodyNoContentLengthHeader handle [BS.head bytes]
+            case bodyBytes of
+                Left byteString -> return $ Left (Body byteString)
+                Right evt       -> return $ Right evt
 
-parseBodyNoContentLengthHeader :: Handle -> [Word8] -> IO (Maybe ByteString)
+parseBodyNoContentLengthHeader :: Handle -> [Word8] -> IO (Either ByteString FrameEvt)
 parseBodyNoContentLengthHeader handle bytes = do
     eof <- hIsEOF handle
     if eof then
-        return Nothing
+        return $ Right GotEof
     else do
         byte <- hGet handle 1
         if byte == (fromString "\NUL") then
-            return $ Just (BS.pack $ Prelude.reverse bytes)
+            return $ Left (BS.pack $ Prelude.reverse bytes)
         else
             parseBodyNoContentLengthHeader handle ((BS.head byte) : bytes)
 
@@ -146,3 +159,20 @@ stringFromHandle :: Handle -> IO String
 stringFromHandle handle = do
     line <- BS.hGetLine handle
     return $ toString line
+
+stringToCommand :: String -> Either Command FrameEvt
+stringToCommand "SEND"        = Left SEND
+stringToCommand "SUBSCRIBE"   = Left SUBSCRIBE
+stringToCommand "UNSUBSCRIBE" = Left UNSUBSCRIBE
+stringToCommand "BEGIN"       = Left BEGIN
+stringToCommand "COMMIT"      = Left COMMIT
+stringToCommand "ABORT"       = Left ABORT
+stringToCommand "ACK"         = Left ACK
+stringToCommand "NACK"        = Left NACK
+stringToCommand "DISCONNECT"  = Left DISCONNECT
+stringToCommand "CONNECT"     = Left CONNECT
+stringToCommand "CONNECTED"   = Left CONNECTED
+stringToCommand "MESSAGE"     = Left MESSAGE
+stringToCommand "RECEIPT"     = Left RECEIPT
+stringToCommand "ERROR"       = Left ERROR
+stringToCommand _             = Right ParseError

@@ -59,24 +59,6 @@ getBody (Frame c h b) = b
 getHeaders :: Frame -> Headers
 getHeaders (Frame c h b) = h
 
-
-stringToCommand :: String -> Maybe Command
-stringToCommand "SEND"        = Just SEND
-stringToCommand "SUBSCRIBE"   = Just SUBSCRIBE
-stringToCommand "UNSUBSCRIBE" = Just UNSUBSCRIBE
-stringToCommand "BEGIN"       = Just BEGIN
-stringToCommand "COMMIT"      = Just COMMIT
-stringToCommand "ABORT"       = Just ABORT
-stringToCommand "ACK"         = Just ACK
-stringToCommand "NACK"        = Just NACK
-stringToCommand "DISCONNECT"  = Just DISCONNECT
-stringToCommand "CONNECT"     = Just CONNECT
-stringToCommand "CONNECTED"   = Just CONNECTED
-stringToCommand "MESSAGE"     = Just MESSAGE
-stringToCommand "RECEIPT"     = Just RECEIPT
-stringToCommand "ERROR"       = Just ERROR
-stringToCommand _             = Nothing
-
 -- Header utility functions
 
 makeHeaders :: [Header] -> Headers
