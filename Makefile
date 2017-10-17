@@ -6,7 +6,7 @@ docs:
 	cabal haddock
 
 install: build docs
-	cabal install
+	cabal install --enable-documentation
 
 clean:
 	rm -rf dist/
