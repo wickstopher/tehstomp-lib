@@ -6,13 +6,15 @@ module Stomp.Frames.IO (
     initFrameHandler,
     put,
     get,
-    close
+    close,
+    frameToBytes
 ) where
 
 import Control.Concurrent
 import Control.Concurrent.TxEvent
 import Data.ByteString as BS
-import Data.ByteString.UTF8
+import Data.ByteString.Char8 as Char8
+import Data.ByteString.UTF8 as UTF
 import Data.List.Split
 import Data.Word
 import Stomp.Frames hiding (addHeaders)
@@ -56,12 +58,13 @@ close (FrameHandler handle _ _ wTid rTid) = do
     killThread wTid
     killThread rTid
 
+-- |Convert a Frame to a STOMP protocol adherent ByteString suitable for transmission over a handle.
+frameToBytes :: Frame -> ByteString
+frameToBytes (Frame c h b) = 
+    BS.append (Char8.snoc (UTF.fromString $ show c) '\n')
+        (Char8.snoc (append (UTF.fromString $ show h) (bodyToBytes b)) '\NUL')
 
---------------------------
--- Unexported Functions --
---------------------------
-
--- Loops waiting for Frames to write out to the Handle. The `put` function in this module sends Frames on
+-- |Loops waiting for Frames to write out to the Handle. The `put` function in this module sends Frames on
 -- the SChan, and we use event synchronization to ensure that no more than one Frame at a time is sent
 -- to the Handle.
 frameWriterLoop :: Handle -> SChan Frame -> IO ()
@@ -70,7 +73,7 @@ frameWriterLoop handle writeChannel = do
     hPut handle $ frameToBytes frame
     frameWriterLoop handle writeChannel
 
--- Loops as data is received from the handle and parses out frames. The loop blocks until a frame is read from the
+-- |Loops as data is received from the handle and parses out frames. The loop blocks until a frame is read from the
 -- FrameHandler using the `get` functions. If there is an error (e.g. an EOF received or an issue in parsing) the loop 
 -- is terminated.
 frameReaderLoop :: Handle -> SChan FrameEvt -> IO ()
@@ -81,7 +84,7 @@ frameReaderLoop handle readChannel = do
         NewFrame _ -> frameReaderLoop handle readChannel
         otherwise  -> return ()
 
--- Parse a frame out of a Handle and return a FrameEvt to the caller.
+-- |Parse a frame out of a Handle and return a FrameEvt to the caller.
 parseFrame :: Handle -> IO FrameEvt
 parseFrame handle = do
     command <- parseCommand handle
@@ -89,7 +92,7 @@ parseFrame handle = do
         Left c    -> addHeaders handle c
         Right evt -> return evt
 
--- Parse the Command portion of a Frame out of a Handle. If no errors are encountered while the
+-- |Parse the Command portion of a Frame out of a Handle. If no errors are encountered while the
 -- Command is being parsed, we return a Left Either containing the Command. A Right Either containing
 -- a FrameEvt indicates an error.
 parseCommand :: Handle -> IO (Either Command FrameEvt)
@@ -101,7 +104,7 @@ parseCommand handle = do
         commandLine <- BS.hGetLine handle
         return $ stringToCommand (toString commandLine)
 
--- Given a Handle and a Command that has been parsed, parse and add the Headers from the Handle.
+-- |Given a Handle and a Command that has been parsed, parse and add the Headers from the Handle.
 addHeaders :: Handle -> Command -> IO FrameEvt
 addHeaders handle command = do
     headers <- parseHeaders handle EndOfHeaders
@@ -109,7 +112,7 @@ addHeaders handle command = do
         Left h    -> addBody handle command h
         Right evt -> return evt
 
--- Parse the Headers portion of a Frame out of a Handle. If no errors are encountered while the
+-- |Parse the Headers portion of a Frame out of a Handle. If no errors are encountered while the
 -- Headers are being parsed, we return a Left Either containing the Headers. A Right Either containing
 -- a FrameEvt indicates an error.
 parseHeaders :: Handle -> Headers -> IO (Either Headers FrameEvt)
@@ -125,7 +128,7 @@ parseHeaders handle headers = do
             Left h -> parseHeaders handle (addHeaderEnd h headers)
             Right evt -> return $ Right evt
 
--- Given a Handle, a Command, and a set of Headers that have been parsed, parse and add the Body from
+-- |Given a Handle, a Command, and a set of Headers that have been parsed, parse and add the Body from
 -- the Handle. This function constructs the new Frame object and returns the NewFrame FrameEvt in the
 -- success case, or returns the appropriate FrameEvt in the error case.
 addBody :: Handle -> Command -> Headers -> IO FrameEvt
@@ -135,7 +138,7 @@ addBody handle command headers = do
         Left b    -> return (NewFrame $ Frame command headers b)
         Right evt -> return evt
 
--- Parse the Body porition of a Frame out of a Handle. If no errors are encountered while the
+-- |Parse the Body porition of a Frame out of a Handle. If no errors are encountered while the
 -- Body is being parsed, we return a Left Either containig a Body. A Right Either containing a
 -- FrameEvt indicates an error.
 parseBody :: Handle -> Maybe Int -> IO (Either Body FrameEvt)
@@ -166,7 +169,7 @@ parseBody handle Nothing  = do
                 Left byteString -> return $ Left (Body byteString)
                 Right evt       -> return $ Right evt
 
--- Parse the Body portion of a Frame out of a Handle. This function reads the body byte-by-byte
+-- |Parse the Body portion of a Frame out of a Handle. This function reads the body byte-by-byte
 -- and is to be used in the absenece of a content-length header. It should be initialized with a
 -- singleton Word8 list containing the first (non-NUL) byte read from the Handle after the 
 -- Headers have been read. It is then called recursively until a NUL byte is received. If no 
@@ -187,7 +190,7 @@ parseBodyNoContentLengthHeader handle bytes = do
         else
             parseBodyNoContentLengthHeader handle ((BS.head byte) : bytes)
 
--- Parse a Header from a String. If the no errors are encountered while the Header is parsed, we
+-- |Parse a Header from a String. If the no errors are encountered while the Header is parsed, we
 -- return a Left Either containing a Header. A Right Either containing a FrameEvt indicates an error.
 headerFromLine :: String -> Either Header FrameEvt
 headerFromLine line = let tokens = tokenize ":" line in
@@ -196,13 +199,13 @@ headerFromLine line = let tokens = tokenize ":" line in
     else
         Right $ ParseError $ "Malformed header: " ++ line
 
--- Read a line of Bytes from the given handle, and return it as a String.
+-- |Read a line of Bytes from the given handle, and return it as a String.
 stringFromHandle :: Handle -> IO String
 stringFromHandle handle = do
     line <- BS.hGetLine handle
     return $ toString line
 
--- Parse a Command from a String. If no errors are encountered while the Command is parsed, we
+-- |Parse a Command from a String. If no errors are encountered while the Command is parsed, we
 -- return a Left Either containint a Command. A Right Either containing a FrameEvt indicates an error.
 stringToCommand :: String -> Either Command FrameEvt
 stringToCommand "SEND"        = Left SEND
@@ -220,3 +223,8 @@ stringToCommand "MESSAGE"     = Left MESSAGE
 stringToCommand "RECEIPT"     = Left RECEIPT
 stringToCommand "ERROR"       = Left ERROR
 stringToCommand s             = Right $ ParseError $ "Malformed command: " ++ s
+
+-- |Convert a Body to bytes. Helper function for `frameToBytes`
+bodyToBytes :: Body -> ByteString
+bodyToBytes EmptyBody = UTF.fromString ""
+bodyToBytes (Body bs) = bs

@@ -2,7 +2,10 @@
 build:
 	cabal build
 
-install:
+docs:
+	cabal haddock
+
+install: build docs
 	cabal install
 
 clean:
