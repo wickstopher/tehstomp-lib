@@ -5,6 +5,7 @@ module Stomp.Frames.IO (
     FrameEvt(..),
     initFrameHandler,
     put,
+    putEvt,
     get,
     close,
     frameToBytes
@@ -42,8 +43,11 @@ initFrameHandler handle = do
 
 -- |Puts the given Frame into the given FrameHandler. This function will block until the Frame has been processed.
 put :: FrameHandler -> Frame -> IO ()
-put (FrameHandler _ writeChannel _ _ _) frame = do
-    sync $ sendEvt writeChannel frame
+put frameHandler frame = do
+    sync $ putEvt frame frameHandler
+
+putEvt :: Frame -> FrameHandler -> Evt ()
+putEvt frame (FrameHandler _ writeChannel _ _ _) = sendEvt writeChannel frame
 
 -- |Get the next FrameEvt from the given FrameHandler. This function will block until a FrameEvt is available.
 get :: FrameHandler -> IO FrameEvt
