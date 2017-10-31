@@ -15,10 +15,12 @@ module Stomp.Frames (
     connected,
     disconnect,
     errorFrame,
+    getAckType,
     getBody,
     getCommand,
     getContentLength,
     getDestination,
+    _getDestination,
     getHeaders,
     getId,
     getReceipt,
@@ -95,7 +97,7 @@ instance Show Frame where
 instance Show AckType where
     show Auto             = "auto"
     show Client           = "client"
-    show ClientIndividual = "ClientIndividual"
+    show ClientIndividual = "client-individual"
 
 -----------------------------
 -- Frame utility functions --
@@ -205,9 +207,27 @@ getReceiptId (Frame _ h _) = getValueForHeader "receipt-id" h
 getDestination :: Frame -> Maybe String
 getDestination (Frame _ h _) = getValueForHeader "destination" h
 
+-- |Given a Frame, get the value of the destination header. If it is not present, throw an error.
+_getDestination :: Frame -> String
+_getDestination frame = case getDestination frame of
+    Just s  -> s
+    Nothing -> error "No destination header present"
+
 -- |Given a Frame, get the value of the ack header if it is present.
 getAck :: Frame -> Maybe String
 getAck (Frame _ h _) = getValueForHeader "ack" h
+
+-- |Given a Frame, get the AckType if it is present
+getAckType :: Frame -> Maybe AckType
+getAckType (Frame _ h _) = case getValueForHeader "ack" h of
+    Just ack -> stringToAckType ack
+    Nothing  -> Nothing
+
+stringToAckType :: String -> Maybe AckType
+stringToAckType "auto"              = Just Auto
+stringToAckType "client"            = Just Client
+stringToAckType "client-individual" = Just ClientIndividual
+stringToAckType _                   = Nothing
 
 -- |Given a Frame, get the value of the id header if it is present.
 getId :: Frame -> Maybe String
