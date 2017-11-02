@@ -55,10 +55,9 @@ get (FrameHandler _ _ readChannel _ _) = do
     evt <- sync $ recvEvt readChannel
     return evt
 
--- |Closes the Handle and kills all threads associated with the FrameHandler.
+-- |Kills all threads associated with the FrameHandler.
 close :: FrameHandler -> IO ()
-close (FrameHandler handle _ _ wTid rTid) = do
-    hClose handle
+close (FrameHandler _ _ _ wTid rTid) = do
     killThread wTid
     killThread rTid
 
