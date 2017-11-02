@@ -7,7 +7,9 @@ module Stomp.Frames (
     Command(..),
     Frame(..),
     AckType(..),
+    ackHeader,
     addFrameHeaderFront,
+    addFrameHeaderEnd,
     addHeaderEnd,
     addHeaderFront,
     addReceiptHeader,
@@ -268,9 +270,9 @@ destinationHeader s = Header "destination" s
 idHeader :: String -> Header
 idHeader s = Header "id" s
 
--- |Given an AckType, generate the appropriate ack Header.
-ackHeader :: AckType -> Header
-ackHeader ackType = Header "ack" (show ackType)
+-- |Given a String, generate an ack header.
+ackHeader :: String -> Header
+ackHeader value = Header "ack" value
 
 -- |Given a transaction identifier as a String, generate a transaction Header.
 txHeader :: String -> Header
@@ -313,7 +315,7 @@ sendText message dest =
 subscribe :: String -> String -> AckType -> Frame
 subscribe id dest ackType = Frame 
     SUBSCRIBE 
-    (makeHeaders [idHeader id, destinationHeader dest, ackHeader ackType])
+    (makeHeaders [idHeader id, destinationHeader dest, ackHeader (show ackType)])
     EmptyBody
 
 -- |Generate an UNSUBSCRIBE Frame given a subscription identifier.
