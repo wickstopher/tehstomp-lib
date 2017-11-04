@@ -7,6 +7,7 @@ module Stomp.Frames (
     Command(..),
     Frame(..),
     AckType(..),
+    ack,
     ackHeader,
     addFrameHeaderFront,
     addFrameHeaderEnd,
@@ -23,14 +24,17 @@ module Stomp.Frames (
     getContentLength,
     getDestination,
     _getDestination,
+    _getAck,
     getHeaders,
     getId,
     getReceipt,
     getReceiptId,
     getSupportedVersions,
     getValueForHeader,
+    idHeader,
     makeHeaders,
     messageIdHeader,
+    nack,
     receipt,
     sendText,
     subscribe,
@@ -218,6 +222,11 @@ _getDestination frame = case getDestination frame of
 -- |Given a Frame, get the value of the ack header if it is present.
 getAck :: Frame -> Maybe String
 getAck (Frame _ h _) = getValueForHeader "ack" h
+
+_getAck :: Frame -> String
+_getAck frame = case getAck frame of
+    Just s  -> s
+    Nothing -> error "No ack header present"
 
 -- |Given a Frame, get the AckType if it is present
 getAckType :: Frame -> Maybe AckType
