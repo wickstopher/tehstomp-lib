@@ -23,8 +23,6 @@ module Stomp.Frames (
     getCommand,
     getContentLength,
     getDestination,
-    _getDestination,
-    _getAck,
     getHeaders,
     getId,
     getReceipt,
@@ -38,7 +36,10 @@ module Stomp.Frames (
     receipt,
     sendText,
     subscribe,
-    subscriptionHeader
+    subscriptionHeader,
+    _getDestination,
+    _getAck,
+    _getId
 ) where
 
 import Data.ByteString as BS
@@ -243,6 +244,11 @@ stringToAckType _                   = Nothing
 -- |Given a Frame, get the value of the id header if it is present.
 getId :: Frame -> Maybe String
 getId (Frame _ h _) = getValueForHeader "id" h
+
+_getId :: Frame -> String
+_getId frame = case getId frame of
+    Just s  -> s
+    Nothing -> error "No id header present"
 
 -- |Given a Frame, get the value of the subscription header if it is present.
 getSubscription :: Frame -> Maybe String
