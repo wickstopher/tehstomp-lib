@@ -16,7 +16,7 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Stomp.Frames, Stomp.Frames.IO, Stomp.Frames.Router, Stomp.TLogger, Stomp.Util
+  exposed-modules:     Stomp.Frames, Stomp.Frames.IO, Stomp.Frames.Router, Stomp.Increment, Stomp.TLogger, Stomp.Util
   -- other-modules:
   -- other-extensions:    
   build-depends:       base >=4.8, bytestring, network, split, tx-events >= 0.4.1, time >= 1.5, unordered-containers >= 0.2.5.1, utf8-string >=1.0
