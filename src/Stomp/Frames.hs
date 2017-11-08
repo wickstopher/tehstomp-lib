@@ -37,6 +37,7 @@ module Stomp.Frames (
     sendText,
     subscribe,
     subscriptionHeader,
+    unsubscribe,
     _getDestination,
     _getAck,
     _getId
