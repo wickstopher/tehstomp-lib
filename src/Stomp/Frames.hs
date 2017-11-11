@@ -7,6 +7,7 @@ module Stomp.Frames (
     Command(..),
     Frame(..),
     AckType(..),
+    abort,
     ack,
     ackHeader,
     addFrameHeaderFront,
@@ -14,6 +15,8 @@ module Stomp.Frames (
     addHeaderEnd,
     addHeaderFront,
     addReceiptHeader,
+    begin,
+    commit,
     connect,
     connected,
     disconnect,
@@ -28,6 +31,7 @@ module Stomp.Frames (
     getReceipt,
     getReceiptId,
     getSupportedVersions,
+    getTransaction,
     getValueForHeader,
     idHeader,
     makeHeaders,
@@ -37,6 +41,7 @@ module Stomp.Frames (
     sendText,
     subscribe,
     subscriptionHeader,
+    txHeader,
     unsubscribe,
     _getDestination,
     _getAck,
@@ -202,6 +207,9 @@ getVersionsFromHeaders :: Headers -> Maybe [String]
 getVersionsFromHeaders EndOfHeaders                                = Nothing
 getVersionsFromHeaders (Some (Header "accept-version" versions) _) = Just (tokenize "," versions)
 getVersionsFromHeaders (Some _ headers)                            = getVersionsFromHeaders headers
+
+getTransaction :: Frame -> Maybe String
+getTransaction (Frame _ h _) = getValueForHeader "transaction" h
 
 -- |Given a Frame, get the value of the receipt header if it is present.
 getReceipt :: Frame -> Maybe String
