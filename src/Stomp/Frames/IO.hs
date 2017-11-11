@@ -7,6 +7,9 @@ module Stomp.Frames.IO (
     put,
     putEvt,
     get,
+    getEvt,
+    heartbeat,
+    heartbeatEvt,
     close,
     frameToBytes
 ) where
