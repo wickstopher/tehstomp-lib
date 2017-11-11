@@ -24,12 +24,15 @@ import System.IO
 
 -- |A FrameHandler encapsulates the work of sending and receiving frames on a Handle. In most cases,
 -- this will be a Handle to a TCP socket connection in a STOMP client or broker.
-data FrameHandler = FrameHandler Handle (SChan Frame) (SChan FrameEvt) ThreadId ThreadId
+data FrameHandler = FrameHandler Handle (SChan (Either Frame DoHeartbeat)) (SChan FrameEvt) ThreadId ThreadId
 
 -- |A FrameEvt is a type of event that can be received from a FrameHandler (see the get function). 
 data FrameEvt = NewFrame Frame |
                 ParseError String |
+                Heartbeat |
                 GotEof
+
+data DoHeartbeat = DoHeartbeat
 
 -- |Given a resource Handle to which STOMP frames will be read from and written to, initializes a FrameHandler 
 -- and returns it to the caller.
@@ -47,13 +50,22 @@ put frameHandler frame = do
     sync $ putEvt frame frameHandler
 
 putEvt :: Frame -> FrameHandler -> Evt ()
-putEvt frame (FrameHandler _ writeChannel _ _ _) = sendEvt writeChannel frame
+putEvt frame (FrameHandler _ writeChannel _ _ _) = sendEvt writeChannel $ Left frame
 
 -- |Get the next FrameEvt from the given FrameHandler. This function will block until a FrameEvt is available.
 get :: FrameHandler -> IO FrameEvt
-get (FrameHandler _ _ readChannel _ _) = do
-    evt <- sync $ recvEvt readChannel
-    return evt
+get frameHandler = do
+    sync $ getEvt frameHandler
+
+getEvt :: FrameHandler -> Evt FrameEvt
+getEvt (FrameHandler _ _ readChannel _ _) = recvEvt readChannel
+
+heartbeat :: FrameHandler -> IO ()
+heartbeat frameHandler = do
+    sync $ heartbeatEvt frameHandler
+
+heartbeatEvt :: FrameHandler -> Evt ()
+heartbeatEvt (FrameHandler _ writeChannel _ _ _) = sendEvt writeChannel $ Right DoHeartbeat
 
 -- |Kills all threads associated with the FrameHandler.
 close :: FrameHandler -> IO ()
@@ -70,11 +82,16 @@ frameToBytes (Frame c h b) =
 -- |Loops waiting for Frames to write out to the Handle. The `put` function in this module sends Frames on
 -- the SChan, and we use event synchronization to ensure that no more than one Frame at a time is sent
 -- to the Handle.
-frameWriterLoop :: Handle -> SChan Frame -> IO ()
+frameWriterLoop :: Handle -> SChan (Either Frame DoHeartbeat) -> IO ()
 frameWriterLoop handle writeChannel = do
-    frame <- sync $ recvEvt writeChannel
-    hPut handle $ frameToBytes frame
+    update <- sync $ recvEvt writeChannel
+    case update of
+        Left frame -> do
+            hPut handle $ frameToBytes frame
+        Right _ -> do
+            hPut handle $ UTF.fromString "\n"
     frameWriterLoop handle writeChannel
+
 
 -- |Loops as data is received from the handle and parses out frames. The loop blocks until a frame is read from the
 -- FrameHandler using the `get` functions. If there is an error (e.g. an EOF received or an issue in parsing) the loop 
@@ -97,7 +114,7 @@ parseFrame handle = do
 
 -- |Parse the Command portion of a Frame out of a Handle. If no errors are encountered while the
 -- Command is being parsed, we return a Left Either containing the Command. A Right Either containing
--- a FrameEvt indicates an error.
+-- a FrameEvt indicates that either a heartbeat was received from the client or that an error occurred.
 parseCommand :: Handle -> IO (Either Command FrameEvt)
 parseCommand handle = do
     eof <- hIsEOF handle
@@ -209,7 +226,8 @@ stringFromHandle handle = do
     return $ toString line
 
 -- |Parse a Command from a String. If no errors are encountered while the Command is parsed, we
--- return a Left Either containint a Command. A Right Either containing a FrameEvt indicates an error.
+-- return a Left Either containint a Command. A Right Either containing a FrameEvt indicates either
+-- a heartbeat was received instead of a frame, or an error occurred.
 stringToCommand :: String -> Either Command FrameEvt
 stringToCommand "SEND"        = Left SEND
 stringToCommand "SUBSCRIBE"   = Left SUBSCRIBE
@@ -225,6 +243,7 @@ stringToCommand "CONNECTED"   = Left CONNECTED
 stringToCommand "MESSAGE"     = Left MESSAGE
 stringToCommand "RECEIPT"     = Left RECEIPT
 stringToCommand "ERROR"       = Left ERROR
+stringToCommand ""            = Right Heartbeat
 stringToCommand s             = Right $ ParseError $ "Malformed command: " ++ s
 
 -- |Convert a Body to bytes. Helper function for `frameToBytes`
