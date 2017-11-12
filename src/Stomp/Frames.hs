@@ -337,6 +337,9 @@ subscriptionHeader id = Header "subscription" id
 messageIdHeader :: String -> Header
 messageIdHeader id = Header "message-id" id
 
+heartbeatHeader :: (Int, Int) -> Header
+heartbeatHeader (x, y) = Header "heart-beat" $ show x ++ "," ++ show y
+
 -----------------------------------------
 -- Functions to generate client frames --
 -----------------------------------------
@@ -394,8 +397,8 @@ disconnect receipt = Frame DISCONNECT (makeHeaders [receiptHeader receipt]) Empt
 -----------------------------------------
 
 -- |Generate a CONNECTED Frame given a version identifier as a String.
-connected :: String -> Frame
-connected version = Frame CONNECTED (makeHeaders [versionHeader version]) EmptyBody
+connected :: String -> Int -> Int -> Frame
+connected version x y = Frame CONNECTED (makeHeaders [versionHeader version, heartbeatHeader (x, y)]) EmptyBody
 
 -- |Generate an ERROR Frame given an error message as a String.
 errorFrame :: String -> Frame
