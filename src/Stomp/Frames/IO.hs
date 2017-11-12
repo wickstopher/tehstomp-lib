@@ -33,7 +33,8 @@ data FrameHandler = FrameHandler Handle (SChan (Either Frame DoHeartbeat)) (SCha
 data FrameEvt = NewFrame Frame |
                 ParseError String |
                 Heartbeat |
-                GotEof
+                GotEof |
+                TimedOut
 
 data DoHeartbeat = DoHeartbeat
 
@@ -62,6 +63,13 @@ get frameHandler = do
 
 getEvt :: FrameHandler -> Evt FrameEvt
 getEvt (FrameHandler _ _ readChannel _ _) = recvEvt readChannel
+
+getEvtWithTimeOut :: FrameHandler -> Int -> Evt FrameEvt
+getEvtWithTimeOut (FrameHandler _ _ readChannel _ _) timeOut = 
+    if timeOut < 1 then
+        recvEvt readChannel
+    else
+        (recvEvt readChannel) `chooseEvt` (timeOutEvt timeOut `thenEvt` (\_ -> alwaysEvt TimedOut))
 
 heartbeat :: FrameHandler -> IO ()
 heartbeat frameHandler = do

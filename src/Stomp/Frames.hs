@@ -27,6 +27,7 @@ module Stomp.Frames (
     getContentLength,
     getDestination,
     getHeaders,
+    getHeartbeat,
     getId,
     getReceipt,
     getReceiptId,
@@ -237,6 +238,24 @@ _getAck :: Frame -> String
 _getAck frame = case getAck frame of
     Just s  -> s
     Nothing -> error "No ack header present"
+
+getHeartbeat :: Frame -> (Int, Int)
+getHeartbeat (Frame _ h _) = case getValueForHeader "heart-beat" h of
+    Just value -> parseHeartbeatValues value
+    Nothing    -> (0, 0)
+
+parseHeartbeatValues :: String -> (Int, Int)
+parseHeartbeatValues value = let tokens = tokenize "," value in
+    if Prelude.length tokens /= 2 then 
+        (0, 0)
+    else 
+        (heartbeatValue (Prelude.head tokens), heartbeatValue (Prelude.head $ Prelude.tail tokens))
+
+heartbeatValue :: String -> Int
+heartbeatValue s = case readMaybe s of
+    Just n  -> n
+    Nothing -> 0
+
 
 -- |Given a Frame, get the AckType if it is present
 getAckType :: Frame -> Maybe AckType
