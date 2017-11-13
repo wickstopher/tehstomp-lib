@@ -8,6 +8,7 @@ module Stomp.Frames.IO (
     putEvt,
     get,
     getEvt,
+    getEvtWithTimeOut,
     heartbeat,
     heartbeatEvt,
     close,
