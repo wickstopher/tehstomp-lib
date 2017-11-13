@@ -23,6 +23,7 @@ data RequestHandler = RequestHandler (SChan Update)
 data Update         = ResponseRequest (SChan FrameEvt)  | 
                       SubscriptionRequest String (SChan FrameEvt) |
                       GotFrame Frame |
+                      GotHeartbeat |
                       ServerDisconnected
 
 -- |Represents a mapping of subscription IDs to the communications channels for interested callers.
@@ -70,7 +71,9 @@ frameLoop frameChannel handler = do
         NewFrame frame -> do
             sync $ sendEvt frameChannel (GotFrame frame)
             frameLoop frameChannel handler
-        GotEof -> do
+        Heartbeat      -> do
+            sync $ sendEvt frameChannel (GotHeartbeat)
+        GotEof         -> do
             sync $ sendEvt frameChannel ServerDisconnected
             return ()
 
