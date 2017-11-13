@@ -290,8 +290,8 @@ getValueForHeader s (Some (Header s' v) headers)
     | otherwise = getValueForHeader s headers
 
 -- |Given a host identifier as a String, create the appropriate headers for the CONNECT/STOMP Frame.
-stompHeaders ::  String -> Headers
-stompHeaders host = makeHeaders [Header "accept-version" "1.2", Header "host" host]
+stompHeaders ::  String -> Int -> Int -> Headers
+stompHeaders host x y = makeHeaders [Header "accept-version" "1.2", Header "host" host, heartbeatHeader (x, y)]
 
 -- |Given a version as a String, create a version Header
 versionHeader :: String -> Header
@@ -345,12 +345,12 @@ heartbeatHeader (x, y) = Header "heart-beat" $ show x ++ "," ++ show y
 -----------------------------------------
 
 -- |Generate a STOMP Frame given a host identifier as a String.
-stomp :: String -> Frame
-stomp host = Frame STOMP (stompHeaders host) EmptyBody
+stomp :: String -> Int -> Int -> Frame
+stomp host x y = Frame STOMP (stompHeaders host x y) EmptyBody
 
 -- |Generate a CONNECT Frame given a host identifier as a String.
-connect :: String -> Frame
-connect host = Frame CONNECT (stompHeaders host) EmptyBody
+connect :: String -> Int -> Int -> Frame
+connect host x y = Frame CONNECT (stompHeaders host x y) EmptyBody
 
 -- |Generate a plain text SEND Frame given a message as a String and a destination as a String.
 sendText :: String -> String -> Frame
