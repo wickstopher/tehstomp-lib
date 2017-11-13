@@ -3,16 +3,16 @@
 module Stomp.Frames.IO (
     FrameHandler,
     FrameEvt(..),
+    SendEvt,
     initFrameHandler,
     put,
     putEvt,
     get,
     getEvt,
     getEvtWithTimeOut,
-    heartbeat,
-    heartbeatEvt,
     close,
-    frameToBytes
+    frameToBytes,
+    updateHeartbeat
 ) where
 
 import Control.Concurrent
@@ -28,7 +28,7 @@ import System.IO
 
 -- |A FrameHandler encapsulates the work of sending and receiving frames on a Handle. In most cases,
 -- this will be a Handle to a TCP socket connection in a STOMP client or broker.
-data FrameHandler = FrameHandler Handle (SChan (Either Frame DoHeartbeat)) (SChan FrameEvt) ThreadId ThreadId
+data FrameHandler = FrameHandler Handle (SChan SendEvt) (SChan FrameEvt) ThreadId ThreadId
 
 -- |A FrameEvt is a type of event that can be received from a FrameHandler (see the get function). 
 data FrameEvt = NewFrame Frame |
@@ -37,7 +37,10 @@ data FrameEvt = NewFrame Frame |
                 GotEof |
                 TimedOut
 
-data DoHeartbeat = DoHeartbeat
+data SendEvt  = SendFrame Frame |
+                UpdateHeartbeat Int |
+                DoHeartbeat
+
 
 -- |Given a resource Handle to which STOMP frames will be read from and written to, initializes a FrameHandler 
 -- and returns it to the caller.
@@ -45,7 +48,7 @@ initFrameHandler :: Handle -> IO FrameHandler
 initFrameHandler handle = do
     writeChannel <- sync newSChan
     readChannel  <- sync newSChan
-    wTid <- forkIO $ frameWriterLoop handle writeChannel
+    wTid <- forkIO $ frameWriterLoop handle 0 writeChannel
     rTid <- forkIO $ frameReaderLoop handle readChannel
     return $ FrameHandler handle writeChannel readChannel wTid rTid
 
@@ -55,7 +58,10 @@ put frameHandler frame = do
     sync $ putEvt frame frameHandler
 
 putEvt :: Frame -> FrameHandler -> Evt ()
-putEvt frame (FrameHandler _ writeChannel _ _ _) = sendEvt writeChannel $ Left frame
+putEvt frame (FrameHandler _ writeChannel _ _ _) = sendEvt writeChannel $ SendFrame frame
+
+updateHeartbeat :: FrameHandler -> Int -> IO ()
+updateHeartbeat (FrameHandler _ writeChannel _ _ _) n = sync $ sendEvt writeChannel (UpdateHeartbeat n)
 
 -- |Get the next FrameEvt from the given FrameHandler. This function will block until a FrameEvt is available.
 get :: FrameHandler -> IO FrameEvt
@@ -72,13 +78,6 @@ getEvtWithTimeOut (FrameHandler _ _ readChannel _ _) timeOut =
     else
         (recvEvt readChannel) `chooseEvt` (timeOutEvt timeOut `thenEvt` (\_ -> alwaysEvt TimedOut))
 
-heartbeat :: FrameHandler -> IO ()
-heartbeat frameHandler = do
-    sync $ heartbeatEvt frameHandler
-
-heartbeatEvt :: FrameHandler -> Evt ()
-heartbeatEvt (FrameHandler _ writeChannel _ _ _) = sendEvt writeChannel $ Right DoHeartbeat
-
 -- |Kills all threads associated with the FrameHandler.
 close :: FrameHandler -> IO ()
 close (FrameHandler _ _ _ wTid rTid) = do
@@ -94,15 +93,24 @@ frameToBytes (Frame c h b) =
 -- |Loops waiting for Frames to write out to the Handle. The `put` function in this module sends Frames on
 -- the SChan, and we use event synchronization to ensure that no more than one Frame at a time is sent
 -- to the Handle.
-frameWriterLoop :: Handle -> SChan (Either Frame DoHeartbeat) -> IO ()
-frameWriterLoop handle writeChannel = do
-    update <- sync $ recvEvt writeChannel
+frameWriterLoop :: Handle -> Int -> SChan SendEvt -> IO ()
+frameWriterLoop handle heartbeat writeChannel = do
+    update <- if heartbeat < 1 
+        then
+            sync $ recvEvt writeChannel
+        else 
+            sync $ (recvEvt writeChannel) `chooseEvt` 
+                (timeOutEvt heartbeat `thenEvt` (\_ -> alwaysEvt DoHeartbeat))
     case update of
-        Left frame -> do
+        SendFrame frame -> do
             hPut handle $ frameToBytes frame
-        Right _ -> do
+            frameWriterLoop handle heartbeat writeChannel
+        UpdateHeartbeat n -> do
             hPut handle $ UTF.fromString "\n"
-    frameWriterLoop handle writeChannel
+            frameWriterLoop handle n writeChannel
+        DoHeartbeat       -> do
+            hPut handle $ UTF.fromString "\n"
+            frameWriterLoop handle heartbeat writeChannel
 
 
 -- |Loops as data is received from the handle and parses out frames. The loop blocks until a frame is read from the
