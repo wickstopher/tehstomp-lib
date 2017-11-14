@@ -96,11 +96,8 @@ frameToBytes (Frame c h b) =
 frameWriterLoop :: Handle -> Int -> SChan SendEvt -> IO ()
 frameWriterLoop handle heartbeat writeChannel = do
     update <- if heartbeat < 1 
-        then
-            sync $ recvEvt writeChannel
-        else 
-            sync $ (recvEvt writeChannel) `chooseEvt` 
-                (timeOutEvt heartbeat `thenEvt` (\_ -> alwaysEvt DoHeartbeat))
+        then sync $ recvEvt writeChannel
+        else sync $ (recvEvt writeChannel) `chooseEvt` (timeOutEvt heartbeat `thenEvt` (\_ -> alwaysEvt DoHeartbeat))
     case update of
         SendFrame frame -> do
             hPut handle $ frameToBytes frame
@@ -122,6 +119,7 @@ frameReaderLoop handle readChannel = do
     sync $ sendEvt readChannel evt
     case evt of 
         NewFrame _ -> frameReaderLoop handle readChannel
+        Heartbeat  -> frameReaderLoop handle readChannel
         otherwise  -> return ()
 
 -- |Parse a frame out of a Handle and return a FrameEvt to the caller.

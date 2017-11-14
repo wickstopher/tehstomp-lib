@@ -73,9 +73,10 @@ frameLoop frameChannel handler = do
             frameLoop frameChannel handler
         Heartbeat      -> do
             sync $ sendEvt frameChannel (GotHeartbeat)
+            frameLoop frameChannel handler
         GotEof         -> do
             sync $ sendEvt frameChannel ServerDisconnected
-            return ()
+
 
 -- |This is initialized by the `initFrameRouter` function and loops as Updates are received. With
 -- each iteration the router's state is updated if need be.
@@ -95,6 +96,7 @@ handleUpdate update router@(FrameRouter _ _ responseChannels subscriptions) =
         GotFrame frame -> do
             handleFrame frame responseChannels subscriptions
             return $ Just router
+        GotHeartbeat   -> return $ Just router
         ResponseRequest responseChannel -> 
             return $ Just $ addResponseChannel router responseChannel
         SubscriptionRequest subId subChannel ->
