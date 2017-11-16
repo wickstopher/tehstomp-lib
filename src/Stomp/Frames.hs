@@ -204,11 +204,13 @@ getContentLength (Some _ headers)                     = getContentLength headers
 getSupportedVersions :: Frame -> Maybe [String]
 getSupportedVersions (Frame _ h _) = getVersionsFromHeaders h
 
+-- |Given a Headers, parse out the versions from the 'accept-version' header and return them as a list.
 getVersionsFromHeaders :: Headers -> Maybe [String]
 getVersionsFromHeaders EndOfHeaders                                = Nothing
 getVersionsFromHeaders (Some (Header "accept-version" versions) _) = Just (tokenize "," versions)
 getVersionsFromHeaders (Some _ headers)                            = getVersionsFromHeaders headers
 
+-- |Given a Frame, get the value of the transaction header if it is present.
 getTransaction :: Frame -> Maybe String
 getTransaction (Frame _ h _) = getValueForHeader "transaction" h
 
@@ -234,16 +236,21 @@ _getDestination frame = case getDestination frame of
 getAck :: Frame -> Maybe String
 getAck (Frame _ h _) = getValueForHeader "ack" h
 
+-- |Given a Frame, get the value of the ack header; throws an error if it is not present.
 _getAck :: Frame -> String
 _getAck frame = case getAck frame of
     Just s  -> s
     Nothing -> error "No ack header present"
 
+-- |Given a Frame, get the (x, y) values in its 'heart-beat' header. If the header is not present, or
+-- the values are malformed, returns (0, 0).
 getHeartbeat :: Frame -> (Int, Int)
 getHeartbeat (Frame _ h _) = case getValueForHeader "heart-beat" h of
     Just value -> parseHeartbeatValues value
     Nothing    -> (0, 0)
 
+-- |Given a String of the form "x,y", parse the values out and return (x, y). If the String is malformed,
+-- returns (0, 0)
 parseHeartbeatValues :: String -> (Int, Int)
 parseHeartbeatValues value = let tokens = tokenize "," value in
     if Prelude.length tokens /= 2 then 
@@ -251,11 +258,11 @@ parseHeartbeatValues value = let tokens = tokenize "," value in
     else 
         (heartbeatValue (Prelude.head tokens), heartbeatValue (Prelude.head $ Prelude.tail tokens))
 
+-- |Parse an Int out of a String. If the read is not possible, returns 0.
 heartbeatValue :: String -> Int
 heartbeatValue s = case readMaybe s of
     Just n  -> n
     Nothing -> 0
-
 
 -- |Given a Frame, get the AckType if it is present
 getAckType :: Frame -> Maybe AckType
@@ -273,6 +280,7 @@ stringToAckType _                   = Nothing
 getId :: Frame -> Maybe String
 getId (Frame _ h _) = getValueForHeader "id" h
 
+-- |Given a Frame, get the value of the id header. If it is not present, throws an error.
 _getId :: Frame -> String
 _getId frame = case getId frame of
     Just s  -> s

@@ -3,7 +3,6 @@
 module Stomp.Frames.IO (
     FrameHandler,
     FrameEvt(..),
-    SendEvt,
     initFrameHandler,
     put,
     putEvt,
@@ -37,6 +36,8 @@ data FrameEvt = NewFrame Frame |
                 GotEof |
                 TimedOut
 
+-- |A SendEvt is a type of event that can be sent to a FrameHandler. This datatype is used internally
+-- to the module only.
 data SendEvt  = SendFrame Frame |
                 UpdateHeartbeat Int |
                 DoHeartbeat
@@ -52,25 +53,34 @@ initFrameHandler handle = do
     rTid <- forkIO $ frameReaderLoop handle readChannel
     return $ FrameHandler handle writeChannel readChannel wTid rTid
 
--- |Puts the given Frame into the given FrameHandler. This function will block until the Frame has been processed.
+-- |Puts the given Frame into the given FrameHandler in an IO context.
+-- This function will block until the Frame has been processed.
 put :: FrameHandler -> Frame -> IO ()
 put frameHandler frame = do
     sync $ putEvt frame frameHandler
 
+-- |Puts the given Frame into the FrameHandler in an Evt context.
 putEvt :: Frame -> FrameHandler -> Evt ()
 putEvt frame (FrameHandler _ writeChannel _ _ _) = sendEvt writeChannel $ SendFrame frame
 
+-- |Update the rate at which this FrameHandler sends heart-beats. A rate of 0 or less means that 
+-- no heart-beats will be transmitted. Otherwise, we will send one heart-beat every n microseconds.
 updateHeartbeat :: FrameHandler -> Int -> IO ()
 updateHeartbeat (FrameHandler _ writeChannel _ _ _) n = sync $ sendEvt writeChannel (UpdateHeartbeat n)
 
--- |Get the next FrameEvt from the given FrameHandler. This function will block until a FrameEvt is available.
+-- |Get the next FrameEvt from the given FrameHandler and return it in an IO context. 
+-- This function will block until a FrameEvt is available.
 get :: FrameHandler -> IO FrameEvt
 get frameHandler = do
     sync $ getEvt frameHandler
 
+-- |Get the next FrameEvt from the given FrameHandler and return it in an Evt context.
 getEvt :: FrameHandler -> Evt FrameEvt
 getEvt (FrameHandler _ _ readChannel _ _) = recvEvt readChannel
 
+-- |Get the next FrameEvt from the given FrameHandler and return it an Evt context. If the given
+-- timeout (in microseconds) is exceeded prior to receiving activity on the channel, this will
+-- return TimedOut.
 getEvtWithTimeOut :: FrameHandler -> Int -> Evt FrameEvt
 getEvtWithTimeOut (FrameHandler _ _ readChannel _ _) timeOut = 
     if timeOut < 1 then
@@ -92,7 +102,8 @@ frameToBytes (Frame c h b) =
 
 -- |Loops waiting for Frames to write out to the Handle. The `put` function in this module sends Frames on
 -- the SChan, and we use event synchronization to ensure that no more than one Frame at a time is sent
--- to the Handle.
+-- to the Handle. If there is value for the heartbeat greater than 0, a heart-beat will be sent every n
+-- microseconds that pass without any activity.
 frameWriterLoop :: Handle -> Int -> SChan SendEvt -> IO ()
 frameWriterLoop handle heartbeat writeChannel = do
     update <- if heartbeat < 1 
