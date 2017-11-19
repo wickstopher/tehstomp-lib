@@ -6,7 +6,7 @@ docs:
 	cabal haddock
 
 install: build docs
-	cabal install --enable-documentation
+	cabal install --enable-documentation --force-reinstalls
 
 clean:
 	rm -rf dist/
