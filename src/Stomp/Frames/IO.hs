@@ -34,7 +34,7 @@ data FrameEvt = NewFrame Frame |
                 ParseError String |
                 Heartbeat |
                 GotEof |
-                TimedOut
+                TimedOut deriving Show
 
 -- |A SendEvt is a type of event that can be sent to a FrameHandler. This datatype is used internally
 -- to the module only.
