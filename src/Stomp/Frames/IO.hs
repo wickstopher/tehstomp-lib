@@ -16,6 +16,7 @@ module Stomp.Frames.IO (
 
 import Control.Concurrent
 import Control.Concurrent.TxEvent
+import Control.Exception
 import Data.ByteString as BS
 import Data.ByteString.Char8 as Char8
 import Data.ByteString.UTF8 as UTF
@@ -126,12 +127,19 @@ frameWriterLoop handle heartbeat writeChannel = do
 -- is terminated.
 frameReaderLoop :: Handle -> SChan FrameEvt -> IO ()
 frameReaderLoop handle readChannel = do
-    evt <- parseFrame handle
+    evt <- parseFrameWithExceptionHandling handle
     sync $ sendEvt readChannel evt
     case evt of 
         NewFrame _ -> frameReaderLoop handle readChannel
         Heartbeat  -> frameReaderLoop handle readChannel
         otherwise  -> return ()
+
+parseFrameWithExceptionHandling :: Handle -> IO FrameEvt
+parseFrameWithExceptionHandling handle = do
+    result <- try (parseFrame handle) :: IO (Either SomeException FrameEvt)
+    case result of
+        Left exception -> return GotEof
+        Right frameEvt -> return frameEvt
 
 -- |Parse a frame out of a Handle and return a FrameEvt to the caller.
 parseFrame :: Handle -> IO FrameEvt
