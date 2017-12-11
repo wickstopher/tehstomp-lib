@@ -22,6 +22,8 @@ data RequestHandler = RequestHandler (SChan Update)
 -- the RequestHandler datatype.
 data Update         = ResponseRequest (SChan FrameEvt)  | 
                       SubscriptionRequest String (SChan FrameEvt) |
+                      HeartbeatRequest (SChan FrameEvt) |
+                      ErrorRequest (SChan FrameEvt) |
                       GotFrame Frame |
                       GotHeartbeat |
                       ServerDisconnected
@@ -32,7 +34,7 @@ data Subscriptions  = Subscriptions (HashMap String [SChan FrameEvt])
 
 -- |The FrameRouter holds channels on which to receive updates, and also holds all of the communications
 -- channels for event listeners. This is an internal representation and is not exported.
-data FrameRouter    = FrameRouter (SChan Update) (SChan Update) [SChan FrameEvt] Subscriptions
+data FrameRouter    = FrameRouter (SChan Update) (SChan Update) [SChan FrameEvt] [SChan FrameEvt] [SChan FrameEvt] Subscriptions
 
 -- |Given a FrameHandler on which FramesEvts are being received, initalize a FrameRouter and return a
 -- RequestHandler for that FrameRouter to the caller.
@@ -42,7 +44,7 @@ initFrameRouter handler = do
     frameChannel   <- sync newSChan
     requestHandler <- return $ RequestHandler updateChannel
     subscriptions  <- return $ Subscriptions HM.empty
-    frameRouter    <- return $ FrameRouter frameChannel updateChannel [] subscriptions
+    frameRouter    <- return $ FrameRouter frameChannel updateChannel [] [] [] subscriptions
     forkIO $ frameLoop frameChannel handler
     forkIO $ routerLoop frameRouter
     return requestHandler
@@ -63,6 +65,20 @@ requestSubscriptionEvents (RequestHandler chan) subscriptionId = do
     sync $ sendEvt chan (SubscriptionRequest subscriptionId frameChannel)
     return frameChannel
 
+-- |Given a RequestHandler, request a new SChan on which to receive heart-beats
+requestHeartbeatEvents :: RequestHandler -> IO (SChan FrameEvt)
+requestHeartbeatEvents (RequestHandler chan) = do
+    heartbeatChannel <- sync newSChan
+    sync $ sendEvt chan (HeartbeatRequest heartbeatChannel)
+    return heartbeatChannel
+
+-- |Given a RequestHandler, request a new SChan on which to receive ERROR frames
+requestErrorEvents :: RequestHandler -> IO (SChan FrameEvt)
+requestErrorEvents (RequestHandler chan) = do
+    errorChannel <- sync newSChan
+    sync $ sendEvt chan (ErrorRequest errorChannel)
+    return errorChannel
+
 -- |This is initialized by the `initFrameRouter` function, and loops as new FrameEvts are received.
 frameLoop :: SChan Update -> FrameHandler -> IO ()
 frameLoop frameChannel handler = do
@@ -81,7 +97,7 @@ frameLoop frameChannel handler = do
 -- |This is initialized by the `initFrameRouter` function and loops as Updates are received. With
 -- each iteration the router's state is updated if need be.
 routerLoop :: FrameRouter -> IO ()
-routerLoop router@(FrameRouter frameChannel updateChannel _ _) = do
+routerLoop router@(FrameRouter frameChannel updateChannel _ _ _ _) = do
     update      <- sync $ chooseEvt (recvEvt frameChannel) (recvEvt updateChannel)
     maybeRouter <- handleUpdate update router
     case maybeRouter of
@@ -91,51 +107,64 @@ routerLoop router@(FrameRouter frameChannel updateChannel _ _) = do
 -- |Handle an Update and return an updated FrameRouter in the case that the Update necessitates
 -- a change (e.g. SubscriptionRequest, ResponseRequest).
 handleUpdate :: Update -> FrameRouter -> IO (Maybe FrameRouter)
-handleUpdate update router@(FrameRouter _ _ responseChannels subscriptions) = 
+handleUpdate update router@(FrameRouter _ _ responseChannels heartbeatChannels errorChannels subscriptions) = 
     case update of
         GotFrame frame -> do
-            handleFrame frame responseChannels subscriptions
+            handleFrame frame responseChannels errorChannels subscriptions
             return $ Just router
         GotHeartbeat   -> return $ Just router
         ResponseRequest responseChannel -> 
             return $ Just $ addResponseChannel router responseChannel
         SubscriptionRequest subId subChannel ->
             return $ Just $ addSubscriptionChannel router subId subChannel
+        HeartbeatRequest heartbeatChannel -> 
+            return $ Just $ addHeartbeatChannel router heartbeatChannel
+        ErrorRequest errorChannel ->
+            return $ Just $ addErrorChannel router errorChannel
         ServerDisconnected -> do
             handleDisconnect responseChannels subscriptions
             return Nothing
 
 -- |Add a response channel to the FrameRouter
 addResponseChannel :: FrameRouter -> (SChan FrameEvt) -> FrameRouter
-addResponseChannel (FrameRouter f u r s) newChan =
-    FrameRouter f u  (newChan:r) s
+addResponseChannel (FrameRouter f u r h e s) newChan =
+    FrameRouter f u (newChan:r) h e s
+
+addHeartbeatChannel :: FrameRouter -> (SChan FrameEvt) -> FrameRouter
+addHeartbeatChannel (FrameRouter f u r h e s) newChan =
+    FrameRouter f u r (newChan:h) e s
+
+addErrorChannel :: FrameRouter -> (SChan FrameEvt) -> FrameRouter
+addErrorChannel (FrameRouter f u r h e s) newChan =
+    FrameRouter f u r h (newChan:e) s
 
 -- |Given a subscription identifier as a String, add a subscription channel to the FrameRouter.
 addSubscriptionChannel :: FrameRouter -> String -> (SChan FrameEvt) -> FrameRouter
-addSubscriptionChannel router@(FrameRouter f u r (Subscriptions subs)) subId newChan = 
+addSubscriptionChannel router@(FrameRouter f u r h e (Subscriptions subs)) subId newChan = 
     let sub = HM.lookup subId subs in
         case sub of 
             Just subscriptionChannels ->
-                FrameRouter f u r (Subscriptions (HM.insert  subId (newChan:subscriptionChannels) subs))
+                FrameRouter f u r h e (Subscriptions (HM.insert  subId (newChan:subscriptionChannels) subs))
             Nothing ->
-                FrameRouter f u r (Subscriptions (HM.insert subId [newChan] subs))
+                FrameRouter f u r h e (Subscriptions (HM.insert subId [newChan] subs))
 
 -- |Given the response channels and subscription channels for a FrameRouter, handle notifications on
 -- those channels for a given frame.
-handleFrame :: Frame -> [SChan FrameEvt] -> Subscriptions -> IO ()
-handleFrame frame responseChannels subscriptions = 
-    let channels = selectChannels (getCommand frame) (getHeaders frame) responseChannels subscriptions in
+handleFrame :: Frame -> [SChan FrameEvt] -> [SChan FrameEvt] -> Subscriptions -> IO ()
+handleFrame frame responseChannels errorChannels subscriptions = 
+    let channels = selectChannels (getCommand frame) (getHeaders frame) responseChannels errorChannels subscriptions in
         sendFrame frame channels
 
 -- |Given a Command and Headers of a Frame, and the response and subscription channesl for a
 -- FrameRouter, return the list of channels that need updates with respect to that Frame.
-selectChannels :: Command -> Headers -> [SChan FrameEvt] -> Subscriptions -> [SChan FrameEvt]
-selectChannels MESSAGE headers _ (Subscriptions subs) = case (getValueForHeader "subscription" headers) of
+selectChannels :: Command -> Headers -> [SChan FrameEvt] -> [SChan FrameEvt] -> Subscriptions -> [SChan FrameEvt]
+selectChannels MESSAGE headers _ _ (Subscriptions subs) = case (getValueForHeader "subscription" headers) of
     Just subId -> case HM.lookup subId subs of
         Just channels -> channels
         Nothing       -> []  
     Nothing -> []
-selectChannels _ _ responseChannels _ = responseChannels
+selectChannels ERROR _ _ errorChannels _ = errorChannels
+selectChannels _ _ responseChannels _ _ = responseChannels
 
 -- |Send a NewFrame FrameEvt for the given Frame to the list of listener channels.
 sendFrame :: Frame -> [SChan FrameEvt] -> IO ()
@@ -143,6 +172,12 @@ sendFrame frame []          = return ()
 sendFrame frame (chan:rest) = do
     forkIO $ sync (sendEvt chan (NewFrame frame))
     sendFrame frame rest
+
+sendHeartbeat :: [SChan FrameEvt] -> IO ()
+sendHeartbeat [] = return ()
+sendHeartbeat (chan:rest) = do
+    forkIO $ sync (sendEvt chan Heartbeat)
+    sendHeartbeat rest
 
 -- |Send a GotEof Frame to all listeners in the given list of response channels and 
 -- to all listeners for all subscriptions.
