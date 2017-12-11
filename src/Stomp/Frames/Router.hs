@@ -5,6 +5,8 @@ module Stomp.Frames.Router (
     initFrameRouter,
     requestResponseEvents,
     requestSubscriptionEvents,
+    requestHeartbeatEvents,
+    requestErrorEvents,
     RequestHandler
 ) where
 
